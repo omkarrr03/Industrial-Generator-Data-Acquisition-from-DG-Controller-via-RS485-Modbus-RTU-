@@ -1,0 +1,16 @@
+KG645 Controller
+      │
+      ▼
+RS485 Modbus RTU
+      │
+      ▼
+MAX485 Converter
+      │
+      ▼
+ESP8266
+      │
+      ▼
+MQTT Broker
+      │
+      ▼
+MQTTBox
