@@ -1,0 +1,31 @@
+1) Step 1: Create New Connection
+Open MQTTBox and click Create MQTT Client.
+
+Configure:
+Client Name : Generator Monitor
+Protocol    : MQTT/TCP
+Broker Host : broker.hivemq.com
+Port        : 1883
+
+Click Connect.
+
+2) Step 2: Subscribe to Topic
+
+Subscribe to:
+generator/status
+
+3) Step 3: Monitor Incoming Data
+
+After successful connection, MQTTBox starts receiving generator telemetry data from ESP8266.
+
+------------------------
+Sample MQTT Payload
+{
+  "fuelLevel": 74,
+  "coolantTemp": 86,
+  "batteryVoltage": 12.7,
+  "engineRPM": 1500,
+  "runHours": 324,
+  "totalPower": 42.5,
+  "engineStatus": "RUNNING"
+}
