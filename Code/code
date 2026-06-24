@@ -1,0 +1,245 @@
+```cpp
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <SoftwareSerial.h>
+#include <ModbusMaster.h>
+
+// ======================================================
+// WiFi Configuration
+// ======================================================
+
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// ======================================================
+// MQTT Configuration
+// ======================================================
+
+const char* mqtt_server = "broker.hivemq.com";
+const int mqtt_port = 1883;
+const char* mqtt_topic = "generator/status";
+
+// ======================================================
+// MAX485 Connections
+// ======================================================
+
+#define MAX485_RE_DE D2
+
+// RX, TX
+SoftwareSerial modbusSerial(D5, D6);
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+ModbusMaster node;
+
+// ======================================================
+// MAX485 Direction Control
+// ======================================================
+
+void preTransmission()
+{
+  digitalWrite(MAX485_RE_DE, HIGH);
+}
+
+void postTransmission()
+{
+  digitalWrite(MAX485_RE_DE, LOW);
+}
+
+// ======================================================
+// WiFi Setup
+// ======================================================
+
+void setupWiFi()
+{
+  Serial.println();
+  Serial.print("Connecting to WiFi...");
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("WiFi Connected");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+// ======================================================
+// MQTT Reconnect
+// ======================================================
+
+void reconnectMQTT()
+{
+  while (!client.connected())
+  {
+    Serial.print("Connecting MQTT...");
+
+    if (client.connect("ESP8266_KG645"))
+    {
+      Serial.println("Connected");
+    }
+    else
+    {
+      Serial.print("Failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" retrying...");
+      delay(3000);
+    }
+  }
+}
+
+// ======================================================
+// Read Single Register
+// ======================================================
+
+uint16_t readRegister(uint16_t address)
+{
+  uint8_t result;
+
+  result = node.readInputRegisters(address, 1);
+
+  if (result == node.ku8MBSuccess)
+  {
+    return node.getResponseBuffer(0);
+  }
+
+  return 0;
+}
+
+// ======================================================
+// Decode DG Status Register
+// ======================================================
+
+String decodeStatus(uint16_t statusWord)
+{
+  if (statusWord & (1 << 15))
+    return "RUNNING";
+
+  if (statusWord & (1 << 14))
+    return "STOPPED_NORMAL";
+
+  if (statusWord & (1 << 13))
+    return "FAULT";
+
+  return "UNKNOWN";
+}
+
+// ======================================================
+// Setup
+// ======================================================
+
+void setup()
+{
+  Serial.begin(115200);
+
+  pinMode(MAX485_RE_DE, OUTPUT);
+  digitalWrite(MAX485_RE_DE, LOW);
+
+  modbusSerial.begin(9600);
+
+  setupWiFi();
+
+  client.setServer(mqtt_server, mqtt_port);
+
+  node.begin(1, modbusSerial);
+
+  node.preTransmission(preTransmission);
+  node.postTransmission(postTransmission);
+
+  Serial.println("KG645 Monitoring Started");
+}
+
+// ======================================================
+// Main Loop
+// ======================================================
+
+void loop()
+{
+  if (!client.connected())
+  {
+    reconnectMQTT();
+  }
+
+  client.loop();
+
+  // --------------------------------------------------
+  // KG645 Register Reads
+  // --------------------------------------------------
+
+  uint16_t coolantRaw = readRegister(3);
+  uint16_t fuelRaw = readRegister(4);
+  uint16_t batteryRaw = readRegister(6);
+  uint16_t runHours = readRegister(9);
+  uint16_t rpm = readRegister(11);
+  uint16_t powerRaw = readRegister(27);
+  uint16_t statusWord = readRegister(74);
+
+  // --------------------------------------------------
+  // Scaling
+  // --------------------------------------------------
+
+  float coolantTemp = coolantRaw;
+  float fuelLevel = fuelRaw;
+  float batteryVoltage = batteryRaw * 0.1;
+  float totalPower = powerRaw * 0.1;
+
+  String engineStatus = decodeStatus(statusWord);
+
+  // --------------------------------------------------
+  // Serial Monitor Output
+  // --------------------------------------------------
+
+  Serial.println("================================");
+
+  Serial.print("Fuel Level: ");
+  Serial.print(fuelLevel);
+  Serial.println(" %");
+
+  Serial.print("Coolant Temp: ");
+  Serial.print(coolantTemp);
+  Serial.println(" C");
+
+  Serial.print("Battery Voltage: ");
+  Serial.print(batteryVoltage);
+  Serial.println(" V");
+
+  Serial.print("Engine RPM: ");
+  Serial.println(rpm);
+
+  Serial.print("Run Hours: ");
+  Serial.println(runHours);
+
+  Serial.print("Power: ");
+  Serial.print(totalPower);
+  Serial.println(" kW");
+
+  Serial.print("Status: ");
+  Serial.println(engineStatus);
+
+  // --------------------------------------------------
+  // MQTT JSON Payload
+  // --------------------------------------------------
+
+  String payload = "{";
+  payload += "\"fuelLevel\":" + String(fuelLevel) + ",";
+  payload += "\"coolantTemp\":" + String(coolantTemp) + ",";
+  payload += "\"batteryVoltage\":" + String(batteryVoltage) + ",";
+  payload += "\"engineRPM\":" + String(rpm) + ",";
+  payload += "\"runHours\":" + String(runHours) + ",";
+  payload += "\"totalPower\":" + String(totalPower) + ",";
+  payload += "\"engineStatus\":\"" + engineStatus + "\"";
+  payload += "}";
+
+  client.publish(mqtt_topic, payload.c_str());
+
+  Serial.println("MQTT Published:");
+  Serial.println(payload);
+
+  delay(5000);
+}
+```
