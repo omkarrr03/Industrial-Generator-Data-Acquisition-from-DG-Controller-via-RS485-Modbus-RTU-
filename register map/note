@@ -1,0 +1,4 @@
+Note:
+Actual register addresses depend on the DG controller model and firmware.
+The table below represents a typical Modbus RTU register mapping used
+for testing and demonstration purposes for the DG controller that we used.
