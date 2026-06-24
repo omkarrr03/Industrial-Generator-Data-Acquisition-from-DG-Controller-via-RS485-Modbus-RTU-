@@ -1,0 +1,7 @@
+ "fuelLevel": 74,
+  "coolantTemp": 86,
+  "batteryVoltage": 12.7,
+  "engineRPM": 1500,
+  "runHours": 324,
+  "totalPower": 42.5,
+  "engineStatus": "RUNNING"
